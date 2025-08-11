@@ -8,11 +8,24 @@ import java.util.Collections;
 
 public class TicketsProcessorImplementation {
 
+    private class TicketTime
+    {
+        private String mCity;
+        private String mTime;
+        private String mDate;
+
+        TicketTime(String city, String time, String date)
+        {
+            mCity = city;
+            mTime = time;
+            mDate = date;
+        }
+    };
+
     private final static DateTimeFormatter INCOME_DATE_TIME_FORMAT = DateTimeFormatter.ofPattern("dd.MM.yy HH:mm");
     private final static String OUTCOME_TIME_FORMAT = "%02d:%02d";
     private final static String CITY1 = "Владивосток";
     private final static String CITY2 = "Тель-Авив";
-    private final static long CITIES_TIME_SHIFT = 8; // for the sake of simplicity, ignore Israel summer/winter time, suppose winter only
 
     private String mProcessingResult;
 
@@ -45,35 +58,46 @@ public class TicketsProcessorImplementation {
     }
 
     /**
-     * @param departureDate
+     *
+     * @param tc
+     * @return based upon ticket time returns UTC (taking into account whether summer or winter time)
+     */
+    LocalDateTime getUTCTime(TicketTime tc)
+    {
+        LocalDateTime retValue = null;
+        try
+        {
+            // get local time from ticket
+            StringBuilder departureDateTime = new StringBuilder(tc.mDate).append(" ");
+            complementTimeIfNecessary(departureDateTime, tc.mTime);
+            departureDateTime.append(tc.mTime);
+            retValue = LocalDateTime.parse(departureDateTime, INCOME_DATE_TIME_FORMAT);
+
+            // take into account time shift
+            retValue = retValue.plusHours(SummerWinterTimeHandler.getTimeShift(retValue, tc.mCity));
+        }
+        catch(Exception e)
+        {
+            e.printStackTrace();
+        }
+
+        return retValue;
+    }
+
+    /**
      * @param departureTime
-     * @param arrivalDate
      * @param arrivalTime
      *
      * @return time of flight calculated based upon parameters in Duration form
-     * local time zone shifts doesn't take into account
      *
      */
-    private Duration timeOfFilght(String departureDate, String departureTime,
-                              String arrivalDate, String arrivalTime)
+    private Duration timeOfFilght(TicketTime departureTime, TicketTime arrivalTime)
     {
         Duration retValue = null;
 
         try
         {
-            // get departure and arrival time
-            StringBuilder departureDateTime = new StringBuilder(departureDate).append(" ");
-            complementTimeIfNecessary(departureDateTime, departureTime);
-            departureDateTime.append(departureTime);
-            LocalDateTime d1 = LocalDateTime.parse(departureDateTime, INCOME_DATE_TIME_FORMAT);
-
-            StringBuilder arrivalDateTime = new StringBuilder(arrivalDate).append(" ");
-            complementTimeIfNecessary(arrivalDateTime, arrivalTime);
-            arrivalDateTime.append(arrivalTime);
-            LocalDateTime d2 = LocalDateTime.parse(arrivalDateTime, INCOME_DATE_TIME_FORMAT);
-
-            // calculate time of flight without local time shift
-            retValue = Duration.between(d1, d2);
+            retValue = Duration.between(getUTCTime(departureTime), getUTCTime(arrivalTime));
         }
         catch(Exception e)
         {
@@ -88,7 +112,6 @@ public class TicketsProcessorImplementation {
      * @param dur
      * @return in accordanve with flight time (dur) return string of flight time
      * in accordance with format TicketsProcessorImplementation.OUTCOME_TIME_FORMAT
-     * local time zone shift has taken into account here
      */
     String getFlightTimeString(Duration dur)
     {
@@ -97,7 +120,6 @@ public class TicketsProcessorImplementation {
         // get hours and minutes of duration and take into account local time zone shift
         long hours = Math.abs(dur.toHours());
         long minutes = Math.abs(dur.toMinutes()) - 60 * hours;
-        hours += CITIES_TIME_SHIFT;
 
         retValue = String.format(OUTCOME_TIME_FORMAT, hours, minutes);
         return retValue;
@@ -108,11 +130,11 @@ public class TicketsProcessorImplementation {
      * @param values
      * @return mean value of values
      */
-    double getMeanValue(ArrayList<Long> values)
+    double getMeanValue(ArrayList<Double> values)
     {
         double retValue = 0.0;
 
-        for(Long val : values)
+        for(Double val : values)
         {
             retValue += val;
         }
@@ -127,21 +149,20 @@ public class TicketsProcessorImplementation {
      * @param values
      * @return median of values
      */
-    String getMedian(ArrayList<Long> values)
+    double getMedian(ArrayList<Double> values)
     {
-        String retValue = "";
+        double retValue = 0.0;
 
         int mediumIndex = values.size() / 2 - 1;
 
         // different approaches for even and uneven numbers of values
         if (0 == (values.size() % 2))
         {
-            double meanValue = (values.get(mediumIndex) + values.get(mediumIndex + 1)) / 2;
-            retValue = String.format("%.2f", meanValue);
+            retValue = (values.get(mediumIndex) + values.get(mediumIndex + 1)) / 2;
         }
         else
         {
-            retValue = String.format("%d", values.get(mediumIndex + 1));
+            retValue = values.get(mediumIndex + 1);
         }
 
         return retValue;
@@ -149,9 +170,7 @@ public class TicketsProcessorImplementation {
 
     TicketsProcessorImplementation(TicketsContainer tc)
     {
-        // not Set, 'cause could be duplicated prices
-        // also, I assume prices are integer values not float/double, i.e. 100$, 300$ (not, say, 255.75$)-at least json file contains such prices
-        ArrayList<Long> prices = new ArrayList<Long>();
+        ArrayList<Double> prices = new ArrayList<Double>();
 
         // carriers/minimum flight times
         Map<String, Duration> minimumTimes = new HashMap<String, Duration>();
@@ -167,8 +186,8 @@ public class TicketsProcessorImplementation {
                 }
 
                 // calculate and update flight time for carrier
-                Duration currentFlightTime = timeOfFilght(ticket.departure_date, ticket.departure_time,
-                        ticket.arrival_date, ticket.arrival_time);
+                Duration currentFlightTime = timeOfFilght(new TicketTime(ticket.origin_name, ticket.departure_time, ticket.departure_date),
+                new TicketTime(ticket.destination_name, ticket.arrival_time, ticket.arrival_date));
                 if (minimumTimes.containsKey(ticket.carrier))
                 {
                     if (currentFlightTime.toMinutes() < minimumTimes.get(ticket.carrier).toMinutes())
@@ -182,7 +201,7 @@ public class TicketsProcessorImplementation {
                 }
 
                 // save all prices to calculate in following mean/median values
-                prices.add(Long.parseLong(ticket.price));
+                prices.add(Double.parseDouble(ticket.price));
             }
 
             // in order to calculate median value, we need sorted prices
@@ -195,8 +214,9 @@ public class TicketsProcessorImplementation {
                 sb.append(val).append(":   ").append(getFlightTimeString(minimumTimes.get(val))).append("\n");
             }
 
-            sb.append("\n").append("\n").append("mean value: ").append(getMeanValue(prices)).append("\n");
-            sb.append("median value: ").append(getMedian(prices));
+            sb.append("\n").append("\n");
+            sb.append("Difference between mean price and median: ")
+                    .append(String.format("%.2f",getMeanValue(prices) - getMedian(prices)));
 
             mProcessingResult = sb.toString();
         }
