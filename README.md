@@ -3,12 +3,16 @@ GIVEN:
 json-file with flight ticket information.
 
 
+
+
 NEEDS TO BE IMPLEMENTED:
 
 for all tickets between "Владивосток" and "Тель-Авив" it is necessary to find:
 
 1) shortest time of flight by carriers;
 2) mean value and median value(s) difference.
+
+
 
 
 SOLUTION:
