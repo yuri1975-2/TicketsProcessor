@@ -21,4 +21,4 @@ TaskProcessor/src/main/java/TicketsProcessorImplementation.java;
 
 TaskProcessor/src/main/java/TicketsContainer.java: definitions of types used to parse json-data;
 
-TaskProcessor/src/main/java/SummerWinterTimeHandler.java: takes care about time zone shifts in accordance with summer/winter times.
+TaskProcessor/src/main/java/SummerWinterTimeHandler.java: takes care about time zone shifts in accordance with summer/winter time.
